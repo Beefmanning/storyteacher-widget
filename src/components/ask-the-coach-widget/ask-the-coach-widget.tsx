@@ -3,10 +3,12 @@ import React, { useState, useRef, useEffect, FormEvent } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL       = "https://izmmadmdxoxzpmiodauk.supabase.co";
-const SUPABASE_ANON_KEY  = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6bW1hZG1keG94enBtaW9kYXVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk3NjIwMTYsImV4cCI6MjA2NTMzODAxNn0.ZlVaHTktT9X6RqFoceo0HCjMmz6Zons-r0k108V2lWM";
+const SUPABASE_ANON_KEY  =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6bW1hZG1keG94enBtaW9kYXVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk3NjIwMTYsImV4cCI6MjA2NTMzODAxNn0.ZlVaHTktT9X6RqFoceo0HCjMmz6Zons-r0k108V2lWM";
 const WIDGET_API_ENDPOINT = `${SUPABASE_URL}/functions/v1/ask-the-coach`;
 const DUMMY_USER_ID       = "c4e9fc02-44ec-4400-b29b-f9c14464725e";
 
+// Initialize Supabase client (for reading auth session only)
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 type ChatMessage = {
@@ -15,15 +17,15 @@ type ChatMessage = {
 };
 
 export default function AskTheCoachWidget() {
-  const [storyText, setStoryText]         = useState("");
-  const [includeStory, setIncludeStory]   = useState(false);
-  const [question, setQuestion]           = useState("");
-  const [chat, setChat]                   = useState<ChatMessage[]>([]);
-  const [loading, setLoading]             = useState(false);
-  const [authToken, setAuthToken]         = useState<string | null>(null);
+  const [storyText, setStoryText]       = useState("");
+  const [includeStory, setIncludeStory] = useState(false);
+  const [question, setQuestion]         = useState("");
+  const [chat, setChat]                 = useState<ChatMessage[]>([]);
+  const [loading, setLoading]           = useState(false);
+  const [authToken, setAuthToken]       = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Auto‑scroll on new messages
+  // Auto-scroll on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat]);
@@ -40,21 +42,22 @@ export default function AskTheCoachWidget() {
     if (!question.trim()) return;
     setLoading(true);
 
-    // Show the user’s question immediately
+    // Optimistically show the user’s question
     setChat((c) => [...c, { role: "user", text: question }]);
 
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        // 1) Gateway auth: send anon key as Bearer to satisfy Supabase edge
+        Authorization: `Bearer ${authToken || SUPABASE_ANON_KEY}`,
+        // 2) Also include apikey header (optional but safe)
+        apikey: SUPABASE_ANON_KEY,
+      };
+
+      // If user is signed in, their JWT is in authToken, so above Authorization uses it.
       const res = await fetch(WIDGET_API_ENDPOINT, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-
-          // 1) supabase gateway auth for anonymous calls:
-          "apikey": SUPABASE_ANON_KEY,
-
-          // 2) if the user is signed in, also send their JWT:
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-        },
+        headers,
         body: JSON.stringify({
           session_token:        "widget-session-001",
           user_question:        question,
@@ -65,7 +68,6 @@ export default function AskTheCoachWidget() {
       });
 
       if (!res.ok) {
-        // read error JSON if available, otherwise fallback
         const err = await res.json().catch(() => null);
         throw new Error(err?.error || "Unexpected error");
       }
@@ -189,9 +191,7 @@ export default function AskTheCoachWidget() {
                 }}
               >
                 {msg.role === "assistant" && (
-                  <div
-                    style={{ fontWeight: "bold", marginBottom: 4, color: "#b3500a" }}
-                  >
+                  <div style={{ fontWeight: "bold", marginBottom: 4, color: "#b3500a" }}>
                     BuildTheStory AI Storyteacher
                   </div>
                 )}
@@ -240,3 +240,4 @@ export default function AskTheCoachWidget() {
     </div>
   );
 }
+
