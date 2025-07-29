@@ -1,8 +1,13 @@
+// AskTheCoachWidget.tsx
 import React, { useState, useRef, useEffect, FormEvent } from "react";
+import { createClient } from "@supabase/supabase-js";
 
-const WIDGET_API_ENDPOINT =
-  "https://izmmadmdxoxzpmiodauk.supabase.co/functions/v1/ask-the-coach";
-const DUMMY_USER_ID = "c4e9fc02-44ec-4400-b29b-f9c14464725e";
+const SUPABASE_URL       = "https://izmmadmdxoxzpmiodauk.supabase.co";
+const SUPABASE_ANON_KEY  = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6bW1hZG1keG94enBtaW9kYXVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk3NjIwMTYsImV4cCI6MjA2NTMzODAxNn0.ZlVaHTktT9X6RqFoceo0HCjMmz6Zons-r0k108V2lWM";
+const WIDGET_API_ENDPOINT = `${SUPABASE_URL}/functions/v1/ask-the-coach`;
+const DUMMY_USER_ID       = "c4e9fc02-44ec-4400-b29b-f9c14464725e";
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -10,46 +15,62 @@ type ChatMessage = {
 };
 
 export default function AskTheCoachWidget() {
-  const [storyText, setStoryText] = useState("");
-  const [includeStory, setIncludeStory] = useState(false);
-  const [question, setQuestion] = useState("");
-  const [chat, setChat] = useState<ChatMessage[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  // ref for auto-scrolling
+  const [storyText, setStoryText]         = useState("");
+  const [includeStory, setIncludeStory]   = useState(false);
+  const [question, setQuestion]           = useState("");
+  const [chat, setChat]                   = useState<ChatMessage[]>([]);
+  const [loading, setLoading]             = useState(false);
+  const [authToken, setAuthToken]         = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // Auto‑scroll on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat]);
+
+  // On mount, fetch the logged‑in user’s session token (if any)
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setAuthToken(data.session?.access_token ?? null);
+    });
+  }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!question.trim()) return;
     setLoading(true);
 
-    // append user question to chat
+    // Show the user’s question immediately
     setChat((c) => [...c, { role: "user", text: question }]);
 
     try {
       const res = await fetch(WIDGET_API_ENDPOINT, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+
+          // 1) supabase gateway auth for anonymous calls:
+          "apikey": SUPABASE_ANON_KEY,
+
+          // 2) if the user is signed in, also send their JWT:
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
         body: JSON.stringify({
-          session_token: "widget-session-001",
-          user_question: question,
-          story_text: includeStory ? storyText : "",
+          session_token:        "widget-session-001",
+          user_question:        question,
+          story_text:           includeStory ? storyText : "",
           include_story_context: includeStory,
-          user_id: DUMMY_USER_ID,
+          user_id:              DUMMY_USER_ID,
         }),
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Unexpected error");
+        // read error JSON if available, otherwise fallback
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error || "Unexpected error");
       }
-      const data = await res.json();
 
-      // append assistant answer to chat
+      const data = await res.json();
       setChat((c) => [
         ...c,
         { role: "assistant", text: data.answer || "[No response]" },
@@ -67,7 +88,7 @@ export default function AskTheCoachWidget() {
 
   return (
     <div style={{ fontFamily: "Arial, sans-serif", maxWidth: 700, margin: "auto" }}>
-      {/* ─── HEADER ───────────────────────────────────────────── */}
+      {/* HEADER */}
       <div
         style={{
           background: "#040f37",
@@ -90,7 +111,7 @@ export default function AskTheCoachWidget() {
         </h2>
       </div>
 
-      {/* ─── OUTER CONTAINER ─────────────────────────────────── */}
+      {/* CONTAINER */}
       <div
         style={{
           border: "1px solid #ccc",
@@ -100,7 +121,7 @@ export default function AskTheCoachWidget() {
           background: "#fff",
         }}
       >
-        {/* ── OPTIONAL STORY BOX ───────────────────────────── */}
+        {/* OPTIONAL STORY BOX */}
         <div style={{ marginBottom: 24 }}>
           <label style={{ fontWeight: "bold", display: "block", marginBottom: 4 }}>
             (Optional) Insert a Story
@@ -135,7 +156,7 @@ export default function AskTheCoachWidget() {
           </div>
         </div>
 
-        {/* ── CHAT WINDOW ───────────────────────────────────── */}
+        {/* CHAT WINDOW */}
         <div
           style={{
             border: "1px solid #222",
@@ -168,7 +189,9 @@ export default function AskTheCoachWidget() {
                 }}
               >
                 {msg.role === "assistant" && (
-                  <div style={{ fontWeight: "bold", marginBottom: 4, color: "#b3500a" }}>
+                  <div
+                    style={{ fontWeight: "bold", marginBottom: 4, color: "#b3500a" }}
+                  >
                     BuildTheStory AI Storyteacher
                   </div>
                 )}
@@ -179,7 +202,7 @@ export default function AskTheCoachWidget() {
           <div ref={bottomRef} />
         </div>
 
-        {/* ── INPUT / SUBMIT ─────────────────────────────────── */}
+        {/* INPUT / SUBMIT */}
         <form onSubmit={handleSubmit} style={{ display: "flex", marginTop: 16 }}>
           <input
             type="text"
