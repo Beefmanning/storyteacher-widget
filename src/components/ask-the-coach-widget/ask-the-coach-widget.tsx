@@ -38,55 +38,63 @@ export default function AskTheCoachWidget() {
   }, []);
 
   const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!question.trim()) return;
-    setLoading(true);
+  e.preventDefault();
+  if (!question.trim()) return;
+  setLoading(true);
 
-    // Optimistically show the user’s question
-    setChat((c) => [...c, { role: "user", text: question }]);
+  // Optimistically show the user’s question
+  setChat((c) => [...c, { role: "user", text: question }]);
 
-    try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        // 1) Gateway auth: send anon key as Bearer to satisfy Supabase edge
-        Authorization: `Bearer ${authToken || SUPABASE_ANON_KEY}`,
-        // 2) Also include apikey header (optional but safe)
-        apikey: SUPABASE_ANON_KEY,
-      };
-
-      // If user is signed in, their JWT is in authToken, so above Authorization uses it.
-      const res = await fetch(WIDGET_API_ENDPOINT, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          session_token:        "widget-session-001",
-          user_question:        question,
-          story_text:           includeStory ? storyText : "",
-          include_story_context: includeStory,
-          user_id:              DUMMY_USER_ID,
-        }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        throw new Error(err?.error || "Unexpected error");
-      }
-
-      const data = await res.json();
-      setChat((c) => [
-        ...c,
-        { role: "assistant", text: data.answer || "[No response]" },
-      ]);
-    } catch (err: any) {
-      setChat((c) => [
-        ...c,
-        { role: "assistant", text: `Error: ${err.message}` },
-      ]);
-    } finally {
-      setLoading(false);
-      setQuestion("");
-    }
+  const payload = {
+    session_token: "widget-session-001",
+    user_question: question,
+    story_text: includeStory ? storyText : "",
+    include_story_context: includeStory,
+    user_id: DUMMY_USER_ID,
   };
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${authToken || SUPABASE_ANON_KEY}`,
+    apikey: SUPABASE_ANON_KEY,
+  };
+
+  // 🔍 DEBUG: Log full outgoing request
+  console.log("📡 Sending POST to AskTheCoach:", {
+    url: WIDGET_API_ENDPOINT,
+    headers,
+    body: payload,
+  });
+
+  try {
+    const res = await fetch(WIDGET_API_ENDPOINT, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => null);
+      throw new Error(err?.error || "Unexpected error");
+    }
+
+    const data = await res.json();
+    setChat((c) => [
+      ...c,
+      { role: "assistant", text: data.answer || "[No response]" },
+    ]);
+  } catch (err: any) {
+    setChat((c) => [
+      ...c,
+      { role: "assistant", text: `Error: ${err.message}` },
+    ]);
+    console.error("❌ AskTheCoach request failed:", err);
+  } finally {
+    setLoading(false);
+    setQuestion("");
+  }
+};
+
 
   return (
     <div style={{ fontFamily: "Arial, sans-serif", maxWidth: 700, margin: "auto" }}>
@@ -109,7 +117,7 @@ export default function AskTheCoachWidget() {
           style={{ height: 40, position: "absolute", left: 16 }}
         />
         <h2 style={{ margin: 0, flex: 1, textAlign: "center" }}>
-          Ask the StoryTeacher Widget
+          Ask the StoryTeacher Widget v2
         </h2>
       </div>
 
